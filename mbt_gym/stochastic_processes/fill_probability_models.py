@@ -168,3 +168,37 @@ class ExogenousMmFillProbabilityModel(FillProbabilityModel):
     def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None):
         for process in self.exogenous_best_depth_processes:
             process.update(arrivals, fills, actions)
+
+
+
+
+## Fill probabilities for AMM fees project
+
+class AmmFeesFillProbabilityModel(FillProbabilityModel):
+    def __init__(
+        self,
+        fill_exponent: float = 1.5,
+        step_size: float = 0.1,
+        num_trajectories: int = 1,
+        seed: Optional[int] = None,
+    ):
+        self.fill_exponent = fill_exponent
+        super().__init__(
+            step_size=step_size,
+            terminal_time=0.0,
+            num_trajectories=num_trajectories,
+            seed=seed,
+        )
+
+    def _get_fill_probabilities(self, LT_buy_sell_prices: np.ndarray, LT_buy_sell_sizes: np.ndarray, 
+                                oracle_price: float, actions: np.ndarray) -> np.ndarray:
+        return np.array( np.exp(
+            self.fill_exponent * (LT_buy_sell_prices[1] *(1. - actions[1]) - oracle_price) * LT_buy_sell_sizes[1]
+        ) , np.exp(
+            -self.fill_exponent * (LT_buy_sell_prices[0] *(1. + actions[0]) - oracle_price) * LT_buy_sell_sizes[0]
+        )
+        )
+
+    @property
+    def max_depth(self) -> float:
+        return -np.log(0.01) / self.fill_exponent 
