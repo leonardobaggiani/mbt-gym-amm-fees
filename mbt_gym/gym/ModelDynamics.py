@@ -273,3 +273,79 @@ class TradinghWithSpeedModelDynamics(ModelDynamics):
     def get_required_stochastic_processes(self):
         processes = ["price_impact_model"]
         return processes
+
+
+
+# New class for charging fees in an AMM
+class FeesAmmModelDynamics(ModelDynamics):
+    """ModelDynamics for 'fees in an AMM'."""
+    def __init__(
+        self,
+        midprice_model : MidpriceModel  = None,
+        arrival_model : ArrivalModel  = None,
+        fill_probability_model : FillProbabilityModel  = None,
+        num_trajectories: int = 1,
+        seed: int = None,
+        max_fees : float = None,
+        min_fees : float = None,
+        inventory_grid : np.ndarray = None,
+        depth : float = 1000 * 100 * 1000,
+    ):
+        super().__init__(midprice_model = midprice_model,
+                        arrival_model = arrival_model,
+                        fill_probability_model = fill_probability_model, 
+                        num_trajectories = num_trajectories,
+                        seed = seed)
+        self.max_fees = max_fees
+        self.min_fees = min_fees
+        self.depth = depth
+        self.inventory_grid = inventory_grid
+        self.required_processes = self.get_required_stochastic_processes()
+        self._check_processes_are_not_none(self.required_processes)
+        self.round_initial_inventory = True
+
+    def _obtain_value_inventory_grid(self, inventory_index: int):
+        return self.inventory_grid[inventory_index]
+    
+    def _obtain_size_of_buy_and_sell(self, inventory_index: int):
+        LT_sells_size = self._obtain_value_inventory_grid(inventory_index + 1) - self._obtain_value_inventory_grid(inventory_index)
+        LT_buys_size = self._obtain_value_inventory_grid(inventory_index) - self._obtain_value_inventory_grid(inventory_index - 1)
+        return LT_buys_size, LT_sells_size
+    
+    def _level_function(self, inventory_index: int):
+        return self.depth / self._obtain_value_inventory_grid(inventory_index)
+
+    def _obtain_execution_of_buy_and_sell(self, inventory_index: int):
+        LT_buys_size, LT_sells_size = self._obtain_size_of_buy_and_sell(inventory_index)
+        LT_sells_price = (self._level_function(inventory_index) - self._level_function(inventory_index + 1))/(LT_sells_size)
+        LT_buys_price = (self._level_function(inventory_index - 1) - self._level_function(inventory_index))/(LT_buys_size)
+        return LT_buys_price, LT_sells_price
+
+    def update_state(self, arrivals: np.ndarray, fills: np.ndarray, action: np.ndarray):  
+        index = self.state[:, INVENTORY_INDEX].astype(int)
+        self.state[:, CASH_INDEX] += np.sum(
+                self.fill_plus_one_multiplier
+                * arrivals
+                * fills
+                * (self.action * self._obtain_execution_of_buy_and_sell(index) *  self._obtain_size_of_buy_and_sell(index)),
+                axis=1,
+            )
+        self.state[:, INVENTORY_INDEX] += np.sum(arrivals * fills * -self.fill_multiplier, axis=1)
+
+    def get_action_space(self) -> gym.spaces.Space:
+        assert self.max_fees is not None, "For fees max_fees cannot be None."
+        assert self.min_fees is not None, "For fees min_fees cannot be None."
+        # agent chooses spread on bid and ask
+        return gym.spaces.Box(
+                low=np.array([self.min_fees, self.min_fees], dtype=np.float32),
+                high=np.array([self.max_fees, self.max_fees], dtype=np.float32),
+            )
+    
+    def get_required_stochastic_processes(self):
+        processes = ["arrival_model", "midprice_model", "fill_probability_model"]
+        return processes
+
+    def get_arrivals_and_fills(self, action: np.ndarray):
+        arrivals = self.arrival_model.get_arrivals()
+        fills = self.fill_probability_model.get_fills(action)
+        return arrivals, fills
