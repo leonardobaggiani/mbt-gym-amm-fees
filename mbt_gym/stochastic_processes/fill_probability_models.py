@@ -184,6 +184,9 @@ class AmmFeesFillProbabilityModel(FillProbabilityModel):
     ):
         self.fill_exponent = fill_exponent
         super().__init__(
+            min_value=np.array([[]]),
+            max_value=np.array([[]]),
+            initial_state=np.array([[]]),
             step_size=step_size,
             terminal_time=0.0,
             num_trajectories=num_trajectories,
@@ -198,6 +201,9 @@ class AmmFeesFillProbabilityModel(FillProbabilityModel):
             -self.fill_exponent * (LT_buy_sell_prices[0] *(1. + actions[0]) - oracle_price) * LT_buy_sell_sizes[0]
         )
         )
+
+    def update(self, arrivals: np.ndarray, fills: np.ndarray, actions: np.ndarray, state: np.ndarray = None):
+        pass
 
     @property
     def max_depth(self) -> float:
