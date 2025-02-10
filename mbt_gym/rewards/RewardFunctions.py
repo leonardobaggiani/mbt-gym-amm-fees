@@ -164,3 +164,36 @@ class ExponentialUtility(RewardFunction):
 
     def reset(self, initial_state: np.ndarray):
         pass
+
+
+
+
+## AMM fees reward function
+
+class AmmFeesRunningPenalty(RewardFunction):
+    def __init__(
+        self,
+        per_step_penalty: float = 0.01,
+        penalty_exponent: float = 2.0,
+    ):
+        self.per_step_penalty = per_step_penalty
+        self.penalty_exponent = penalty_exponent
+        self.pnl = PnL()
+
+    def calculate(
+        self, current_state: np.ndarray, action: np.ndarray, next_state: np.ndarray, Z_marginal: float) -> float:
+        dt = next_state[:, TIME_INDEX] - current_state[:, TIME_INDEX]
+        current_market_value = (
+            current_state[:, CASH_INDEX] 
+        )
+        next_market_value = (
+            next_state[:, CASH_INDEX] 
+        )
+    
+        return (
+            next_market_value - current_market_value
+            - dt * self.per_step_penalty * (next_state[:, ASSET_PRICE_INDEX] - Z_marginal ) ** self.penalty_exponent
+        )
+
+    def reset(self, initial_state: np.ndarray):
+        pass
